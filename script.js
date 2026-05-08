@@ -135,14 +135,16 @@ function triggerSuccess(data) {
         <p>Time <span>${new Date(data.time).toLocaleTimeString()}</span></p>
     `;
 
+    // 💀🔥 FIRE S2S WEBHOOK TO MERCHANT
     fetch("https://gateway-test-m689.onrender.com/webhook", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ txn_id: TXN_ID, status: "success", utr: data.utr })
     }).catch(e => console.error("Webhook failed:", e));
 
+    // 💀🔥 THE HARD REDIRECT (SUCCESS)
     setTimeout(() => {
-        window.location.href = `${REDIRECT_URL}?status=success&txn=${TXN_ID}&utr=${data.utr}`;
+        window.location.replace(`${REDIRECT_URL}?status=success&txn=${TXN_ID}&utr=${data.utr}`);
     }, 3000); 
 }
 
@@ -161,16 +163,18 @@ function triggerFail(reason) {
     const retryBtn = document.querySelector("#step-fail .retry-btn");
     retryBtn.innerText = "Return to Merchant";
     retryBtn.onclick = () => {
-        window.location.href = `${REDIRECT_URL}?status=failed&txn=${TXN_ID}&reason=${encodeURIComponent(reason)}`;
+        window.location.replace(`${REDIRECT_URL}?status=failed&txn=${TXN_ID}&reason=${encodeURIComponent(reason)}`);
     };
 
+    // 💀🔥 FIRE S2S WEBHOOK TO MERCHANT
     fetch("https://gateway-test-m689.onrender.com/webhook", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ txn_id: TXN_ID, status: "failed", reason: reason })
     }).catch(e => console.error("Webhook failed:", e));
 
+    // 💀🔥 THE HARD REDIRECT (FAIL)
     setTimeout(() => {
-        window.location.href = `${REDIRECT_URL}?status=failed&txn=${TXN_ID}&reason=${encodeURIComponent(reason)}`;
+        window.location.replace(`${REDIRECT_URL}?status=failed&txn=${TXN_ID}&reason=${encodeURIComponent(reason)}`);
     }, 4000);
 }
