@@ -2,25 +2,18 @@
 const API_BASE_URL = "https://bittu234we-slice-gateway-api.hf.space"; 
 const MY_UPI_ID = "7047511725@slc";
 
-// 1. DYNAMIC URL PARSING
+// 1. DYNAMIC URL PARSING (THE GATEKEEPER)
 const urlParams = new URLSearchParams(window.location.search);
-const STORE_NAME = urlParams.get('store') || "Slice Gateway";
-const PAYMENT_AMOUNT = urlParams.get('amount') || "100.32";
-const TXN_ID = urlParams.get('txn') || "TXN_UNKNOWN";
+const STORE_NAME = urlParams.get('store');
+const PAYMENT_AMOUNT = urlParams.get('amount');
+const TXN_ID = urlParams.get('txn');
+const REDIRECT_URL = urlParams.get('redirect_url');
 
 let countdownInterval;
 let pollingInterval;
 let timeRemaining = 180; 
 let pollAttempts = 0;
 const maxAttempts = 90; 
-
-// --- 💀🔥 REFRESH KILL-SWITCH TRAP ---
-// If the user refreshes the page, invalidate the transaction immediately
-if (sessionStorage.getItem(`active_txn_${TXN_ID}`)) {
-    triggerFail("Transaction Invalidated: Page Refreshed");
-} else {
-    sessionStorage.setItem(`active_txn_${TXN_ID}`, "true");
-}
 
 // --- 💀🔥 BACK BUTTON TRAP ENGINE ---
 history.pushState(null, null, location.href);
@@ -38,26 +31,47 @@ function cancelTransaction() {
     triggerFail("Transaction Cancelled by User");
 }
 
-// --- MAIN INIT ---
+// --- MAIN INIT & GATEKEEPER ---
 window.onload = () => {
-    // Inject Dynamic Data into UI
-    document.getElementById('store-name-display').innerText = STORE_NAME;
-    document.getElementById('amount-display').innerText = `₹${PAYMENT_AMOUNT}`;
-    document.getElementById('boot-logo-text').innerText = STORE_NAME.charAt(0).toUpperCase();
-    document.getElementById('header-logo-text').innerText = STORE_NAME.charAt(0).toUpperCase();
-
-    generateLocalQRCode(); 
-    
     setTimeout(() => { document.getElementById('boot-progress').style.width = '100%'; }, 100);
+    
     setTimeout(() => {
         const loader = document.getElementById('boot-loader');
         loader.style.opacity = '0';
+        
         setTimeout(() => {
             loader.style.visibility = 'hidden';
-            // Only slide up if we haven't already failed via refresh trap
-            if (document.getElementById("step-pay").style.display !== "none") {
-                document.getElementById('main-container').classList.add('loaded'); 
+            document.getElementById('main-container').classList.add('loaded'); 
+
+            // 💀🔥 SECURITY CHECK: Block Direct Access
+            if (!STORE_NAME || !PAYMENT_AMOUNT || !TXN_ID || !REDIRECT_URL) {
+                document.getElementById("step-pay").style.display = "none";
+                document.getElementById("footer-ui").style.display = "none";
+                
+                const failSection = document.getElementById("step-fail");
+                failSection.style.display = "block";
+                failSection.querySelector(".fail-text").innerText = "Access Denied";
+                failSection.querySelector("p").innerText = "Direct access is disabled. Please initiate checkout from a secure merchant link.";
+                failSection.querySelector(".retry-btn").style.display = "none"; // Hide button
+                return; // Kill execution here
             }
+
+            // Inject Dynamic Data into UI
+            document.getElementById('store-name-display').innerText = STORE_NAME;
+            document.getElementById('amount-display').innerText = `₹${PAYMENT_AMOUNT}`;
+            document.getElementById('boot-logo-text').innerText = STORE_NAME.charAt(0).toUpperCase();
+            document.getElementById('header-logo-text').innerText = STORE_NAME.charAt(0).toUpperCase();
+
+            // --- 💀🔥 REFRESH KILL-SWITCH TRAP ---
+            if (sessionStorage.getItem(`active_txn_${TXN_ID}`)) {
+                triggerFail("Transaction Invalidated: Page Refreshed");
+                return;
+            } else {
+                sessionStorage.setItem(`active_txn_${TXN_ID}`, "true");
+            }
+
+            generateLocalQRCode(); 
+
         }, 800);
     }, 1600); 
 };
@@ -118,7 +132,7 @@ async function pollAPI() {
 
 function triggerSuccess(data) {
     clearInterval(countdownInterval); clearInterval(pollingInterval);
-    sessionStorage.removeItem(`active_txn_${TXN_ID}`); // Clean up trap
+    sessionStorage.removeItem(`active_txn_${TXN_ID}`); // Clean up refresh trap
 
     document.getElementById("step-pay").style.display = "none";
     document.getElementById("footer-ui").style.display = "none";
@@ -130,22 +144,34 @@ function triggerSuccess(data) {
         <p>Time <span>${new Date(data.time).toLocaleTimeString()}</span></p>
     `;
 
-    // 💀🔥 (FUTURE) S2S Webhook logic will go here
+    // 💀🔥 THE REDIRECT (SUCCESS)
+    setTimeout(() => {
+        window.location.href = `${REDIRECT_URL}?status=success&txn=${TXN_ID}&utr=${data.utr}`;
+    }, 3000); // 3-second delay to show the success animation
 }
 
 function triggerFail(reason) {
     clearInterval(countdownInterval); clearInterval(pollingInterval);
-    sessionStorage.removeItem(`active_txn_${TXN_ID}`); // Clean up trap
+    sessionStorage.removeItem(`active_txn_${TXN_ID}`); // Clean up refresh trap
 
     document.getElementById("step-pay").style.display = "none";
     document.getElementById("footer-ui").style.display = "none";
-    
-    // Update the fail reason text dynamically
-    if(reason) {
-        document.getElementById("fail-reason").innerText = reason;
-    }
-    
     document.getElementById("step-fail").style.display = "block";
+    
+    // Inject the specific fail reason
+    if(reason) {
+        document.querySelector("#step-fail p").innerText = reason;
+    }
 
-    // 💀🔥 (FUTURE) S2S Webhook logic will go here
+    // Change retry button to a redirect button
+    const retryBtn = document.querySelector("#step-fail .retry-btn");
+    retryBtn.innerText = "Return to Merchant";
+    retryBtn.onclick = () => {
+        window.location.href = `${REDIRECT_URL}?status=failed&txn=${TXN_ID}&reason=${encodeURIComponent(reason)}`;
+    };
+
+    // 💀🔥 THE REDIRECT (FAIL) - Auto trigger after 4 seconds
+    setTimeout(() => {
+        window.location.href = `${REDIRECT_URL}?status=failed&txn=${TXN_ID}&reason=${encodeURIComponent(reason)}`;
+    }, 4000);
 }
